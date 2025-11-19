@@ -42,6 +42,7 @@ public class SecurityConfig {
 
         // 3. 【【核心：配置“授权规则”】】
         http.authorizeHttpRequests(auth -> auth
+                .requestMatchers("/").permitAll()
                 // --- “放行” (Permit All) ---
                 // (1) 登录/注册 API
                 .requestMatchers("/api/v1/auth/**").permitAll()
