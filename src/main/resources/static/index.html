@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>博客系统 API 测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
+        div { background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        h2 { border-bottom: 2px solid #007bff; padding-bottom: 5px; }
+        input, textarea { width: 95%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; }
+        button { padding: 10px 15px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        button.delete { background: #dc3545; }
+        button.hot { background: #ffc107; color: #000;}
+        button:hover { opacity: 0.8; }
+        pre { background: #eee; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+
+<h1>博客系统 API 测试 (V4 - Redis 缓存)</h1>
+<p>API Base URL: <strong>http://localhost:8081/api/v1</strong></p>
+
+<div>
+    <h2>1. 获取所有文章 (GET /api/v1/posts)</h2>
+    <button id="btnGetAll">点击获取</button>
+    <h3>结果:</h3>
+    <pre id="resultGetAll">这里将显示所有文章...</pre>
+</div>
+
+
+<div>
+    <h2>2. 创建新文章 (POST /api/v1/posts)</h2>
+    <form id="formCreate">
+        <label for="createTitle">标题:</label>
+        <input type="text" id="createTitle" placeholder="输入文章标题 (3-200字符)">
+        <label for="createContent">内容:</label>
+        <textarea id="createContent" placeholder="输入文章内容 (不能为空)"></textarea>
+        <button type="submit">创建</button>
+    </form>
+    <h3>结果:</h3>
+    <pre id="resultCreate">这里将显示创建结果...</pre>
+</div>
+
+<div>
+    <h2>3. 操作单篇文章 (GET / PUT / DELETE)</h2>
+    <label for="postId">文章 ID:</label>
+    <input type="number" id="postId" placeholder="输入要操作的文章 ID (如 1)">
+
+    <button id="btnGetById">获取 (GET) - (会增加点击率)</button>
+    <button id="btnDeleteById" class="delete">删除 (DELETE)</button>
+
+    <hr style="margin: 20px 0;">
+
+    <label for="updateTitle">更新标题:</label>
+    <input type="text" id="updateTitle" placeholder="输入新标题 (3-200字符)">
+    <label for="updateContent">更新内容:</label>
+    <textarea id="updateContent" placeholder="输入新内容 (不能为空)"></textarea>
+    <button id="btnUpdateById">更新 (PUT)</button>
+
+    <h3>结果:</h3>
+    <pre id="resultSingle">这里将显示单篇操作结果...</pre>
+</div>
+<div>
+    <h2>4. 获取 Top 5 热榜 (GET /api/v1/posts/top)</h2>
+    <button id="btnGetTop5" class="hot">点击获取 (ZSet)</button>
+    <h3>结果:</h3>
+    <pre id="resultTop5">这里将显示点击率最高的5篇文章...</pre>
+</div>
+<div>
+    <h2>5. 认证 (Auth) - (短信登录)</h2>
+    <label for="phone">手机号 (11位):</label>
+    <input type="text" id="phone" placeholder="输入11位手机号">
+    <button id="btnSendCode" class="hot">发送验证码</button>
+    <br>
+    <label for="code">验证码 (6位):</label>
+    <input type="text" id="code" placeholder="输入6位验证码">
+    <button id="btnLogin" class="delete">登录</button>
+
+    <h3>登录状态:</h3>
+    <pre id="resultAuth">当前未登录</pre>
+</div>
+<div>
+    <h2>6. 第三方登录 (OAuth 2.0)</h2>
+    <button id="btnGitHubLogin">
+        <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+             width="20" height="20" style="vertical-align: middle;">
+        Login with GitHub
+    </button>
+    <h3>结果:</h3>
+    <pre id="resultOAuth">...</pre>
+</div>
+<script>
+    const API_BASE_URL = 'http://localhost:8081/api/v1';
+    // === 【【新】】 全局变量，用于存储我们的“通行证” ===
+    let userToken = null;
+    // 辅助函数：用于显示结果
+    function showResult(elementId, data) {
+        // (在 fetch 成功后，自动清除另一个区域的错误，提升体验)
+        // try {
+        //     if (elementId === 'resultSingle') document.getElementById('resultCreate').textContent = '...';
+        //     if (elementId === 'resultCreate') document.getElementById('resultSingle').textContent = '...';
+        // } catch(e) {}
+
+        document.getElementById(elementId).textContent = JSON.stringify(data, null, 2);
+    }
+
+    // 1. 获取所有文章
+    document.getElementById('btnGetAll').onclick = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/posts`);
+            const data = await response.json(); // 我们统一返回 ResultVO
+            showResult('resultGetAll', data);
+        } catch (error) {
+            showResult('resultGetAll', { error: error.message });
+        }
+    };
+
+    // === [新功能] JS 逻辑 ===
+    // 4. 获取 Top 5 热榜
+    document.getElementById('btnGetTop5').onclick = async () => {
+        try {
+            // 调用我们新的 API
+            const response = await fetch(`${API_BASE_URL}/posts/top`);
+            const data = await response.json();
+            showResult('resultTop5', data);
+        } catch (error) {
+            showResult('resultTop5', { error: error.message });
+        }
+    };
+    // ========================
+
+    // 2. 创建新文章
+    // 我们【现在】就去修改“创建文章”的 JS，
+    // 让它在“已登录”时，自动带上 Token
+    // (虽然后端现在还没开始“检查”它，但我们先把前端改了)
+    document.getElementById('formCreate').onsubmit = async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('createTitle').value;
+        const content = document.getElementById('createContent').value;
+        const postData = { title: title, content: content };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/posts`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // 【【新】】
+                    // 使用 ... (Spread 语法) 合并 Auth Header
+                    // 如果 userToken = null, getAuthHeader() 返回 {} (空对象)
+                    // 如果 userToken 存在, 返回 { 'Authorization': '...' }
+                    ...getAuthHeader()
+                },
+                body: JSON.stringify(postData)
+            });
+            const data = await response.json();
+            showResult('resultCreate', data);
+        } catch (error) {
+            showResult('resultCreate', { error: error.message });
+        }
+    };
+
+    // 3. 获取单篇文章 (GET by ID)
+    document.getElementById('btnGetById').onclick = async () => {
+        const id = document.getElementById('postId').value;
+        if (!id) {
+            showResult('resultSingle', { error: "请输入文章 ID" });
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}/posts/${id}`);
+            const data = await response.json();
+
+            // 成功获取后，顺便把“更新框”填上，方便测试
+            if (data.code === 200) {
+                document.getElementById('updateTitle').value = data.data.title;
+                document.getElementById('updateContent').value = data.data.content;
+            }
+
+            showResult('resultSingle', data);
+        } catch (error) {
+            showResult('resultSingle', { error: error.message });
+        }
+    };
+
+    // 4. 更新单篇文章 (PUT by ID)
+    document.getElementById('btnUpdateById').onclick = async () => {
+        const id = document.getElementById('postId').value;
+        const title = document.getElementById('updateTitle').value;
+        const content = document.getElementById('updateContent').value;
+
+        if (!id) {
+            showResult('resultSingle', { error: "请输入要更新的文章 ID" });
+            return;
+        }
+        const postData = { title, content };
+        try {
+            const response = await fetch(`${API_BASE_URL}/posts/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(postData)
+            });
+            const data = await response.json();
+            showResult('resultSingle', data);
+        } catch (error) {
+            showResult('resultSingle', { error: error.message });
+        }
+    };
+
+    // 5. 删除单篇文章 (DELETE by ID)
+    document.getElementById('btnDeleteById').onclick = async () => {
+        const id = document.getElementById('postId').value;
+        if (!id) {
+            showResult('resultSingle', { error: "请输入要删除的文章 ID" });
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}/posts/${id}`, {
+                method: 'DELETE'
+            });
+
+            // === [重要修复] ===
+            // 后端现在统一返回 ResultVO (JSON)，
+            // 不再是 text/string
+            const data = await response.json();
+            // const data = await response.text(); // <-- 这是旧的，已修复
+            // ==================
+
+            showResult('resultSingle', data);
+        } catch (error) {
+            showResult('resultSingle', { error: error.message });
+        }
+    };
+    // 5.1 发送验证码
+    document.getElementById('btnSendCode').onclick = async () => {
+        const phone = document.getElementById('phone').value;
+        if (!phone || phone.length !== 11) {
+            showResult('resultAuth', { error: "请输入正确的11位手机号" });
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/send-code`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phone })
+            });
+            const data = await response.json();
+
+            if (data.code === 200) {
+                showResult('resultAuth', { success: "验证码已发送 (请查看后端控制台)" });
+            } else {
+                showResult('resultAuth', data); // (显示 404 等错误)
+            }
+        } catch (error) {
+            showResult('resultAuth', { error: error.message });
+        }
+    };
+
+    // 5.2 点击登录
+    document.getElementById('btnLogin').onclick = async () => {
+        const phone = document.getElementById('phone').value;
+        const code = document.getElementById('code').value;
+        // ... (校验) ...
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/login-by-sms`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phone, code: code })
+            });
+            const data = await response.json();
+
+            if (data.code === 200) {
+                // 【【重大修改】】
+                // data.data 现在是 "eyJh..." (JWT Token)
+
+                // 1. 存入我们的全局 JS 变量
+                userToken = data.data;
+
+                // 2. 更新 UI，显示“登录成功”和 Token
+                //    (在真实项目中，你不会把 Token 显示给用户，
+                //     而是存入 localStorage，并更新 UI 为“欢迎您, ...”)
+                showResult('resultAuth', {
+                    success: "登录成功！",
+                    token: userToken
+                });
+
+            } else {
+                userToken = null; // 登录失败
+                showResult('resultAuth', data);
+            }
+        } catch (error) {
+            userToken = null; // 登录失败
+            showResult('resultAuth', { error: error.message });
+        }
+    };
+    // (我们需要一个函数来“获取”Token，
+    //  以便在下一步 (5.3) 保护 API 时使用)
+    function getAuthHeader() {
+        if (userToken) {
+            return { 'Authorization': 'Bearer ' + userToken };
+        }
+        return {};
+    }
+    // === 【新】 6. GitHub 登录 ===
+    document.getElementById('btnGitHubLogin').onclick = async () => {
+        try {
+            // 1. 从后端获取“跳转 URL”
+            const response = await fetch(`${API_BASE_URL}/auth/github/url`);
+            const data = await response.json();
+
+            if (data.code === 200) {
+                // 2. 【【核心】】
+                //    重定向浏览器到 GitHub 的授权页面
+                window.location.href = data.data;
+            } else {
+                showResult('resultOAuth', data);
+            }
+        } catch (error) {
+            showResult('resultOAuth', { error: error.message });
+        }
+    };
+
+    // === 【新】 页面加载时，检查 URL 参数 ===
+    // (这是为了接收“回调”时带回来的 Token)
+    window.onload = () => {
+        const params = new URLSearchParams(window.location.search);
+        const tokenFromUrl = params.get('token');
+
+        if (tokenFromUrl) {
+            console.log("从 URL 中获取到 Token: ", tokenFromUrl);
+
+            // 1. 存入我们的“全局通行证”
+            userToken = tokenFromUrl;
+
+            // 2. 更新 UI
+            showResult('resultOAuth', {
+                success: "GitHub 登录成功！",
+                token: userToken
+            });
+
+            // 3. (可选) 清理 URL，防止 Token 泄露
+            window.history.replaceState({}, document.title, "/index.html");
+        }
+    };
+</script>
+</body>
+</html>

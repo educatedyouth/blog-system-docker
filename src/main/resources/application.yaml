@@ -1,0 +1,86 @@
+server:
+  port: 8081 # 我们在阶段一设置的端口
+
+spring:
+  data:
+    redis:
+      # 假设你已在本地安装了 Redis
+      host: localhost
+      port: 6379
+      # password: (如果你的 Redis 有密码)
+      # database: 0 (使用 0 号数据库)
+
+    # --- 告诉 Spring Cache 我们要用 Redis ---
+  cache:
+    # 默认是 "simple" (一个内存 Map)，我们必须改成 "redis"
+    type: redis
+  application:
+    name: blog-system
+
+  # 2. 【关键】激活器
+  # spring.profiles.active 告诉 Spring Boot 默认激活哪个 profile。
+  # 在开发时，我们把它设为 "dev"
+  profiles:
+    active: dev
+  # --- 数据库连接配置 ---
+  datasource:
+    url: jdbc:mysql://localhost:3306/blog_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root      # 替换成你自己的 MySQL 用户名
+    password: Hzj760322      # 替换成你自己的 MySQL 密码
+    driver-class-name: com.mysql.cj.jdbc.Driver # 告诉 Spring 用哪个驱动
+
+  # --- JPA (Hibernate) 配置 ---
+  jpa:
+    # 这是关键：ddl-auto (Data Definition Language)
+    # 'update': 启动时检查 Java 实体类 (@Entity) 和数据库表结构
+    #           如果表不存在，就创建；如果表存在但字段不匹配，就尝试更新表结构。
+    #           (开发时用 update 或 create-drop，生产环境用 flyway/liquibase)
+    hibernate:
+      ddl-auto: update
+    # 在控制台显示 JPA 正在执行的 SQL 语句，方便调试
+    show-sql: true
+    properties:
+      hibernate:
+        # 格式化 SQL 输出
+        format_sql: true
+# 生产环境：日志级别设为 INFO，减少不必要的日志输出
+logging:
+  level:
+    org.springframework: INFO
+    org.hzj.demo: INFO
+# --- 我们自定义的配置 ---
+# 注意：这个前缀(prefix) "blog" 是我们自己发明的
+blog:
+  author: "Hzj"
+  welcome-message: "欢迎来到[开发环境] (来自 application-dev.yml)"
+  tags:
+    - Java
+    - Spring Boot
+    - API
+# --- 【新】JWT 配置 ---
+jwt:
+  # 【【极其重要】】
+  # 这是一个“加密秘钥”。必须足够长、足够随机。
+  # 决不能泄露！
+  # (你“必须”换成你自己的随机字符串，例如用
+  #  在线密码生成器生成一个 64 位的字符串)
+  secret: "bXlzdXBlcnNlY3JldGtleWZvcmF3ZXNvbWVhcHBsaWNhdGlvbjEyMzQ1Njc4OQ=="
+
+  # Token 过期时间 (毫秒)
+  # 3600000 毫秒 = 1 小时
+  expiration-ms: 3600000
+
+# --- 【新】GitHub OAuth 配置 ---
+github:
+  client-id: "Ov23liWv1jcMmNbpBHy5"     # <-- 粘贴你刚拿到的 Client ID
+  client-secret: "5a01e6bb5356f9f317310d1a490196f094fe7a40" # <-- 粘贴你刚拿到的 Client Secret
+management:
+  endpoints:
+    web:
+      exposure:
+        # 暴露所有端点 (危险！仅限内网或开发环境)
+        # 生产环境通常只暴露 health, metrics, prometheus
+        include: "*"
+  endpoint:
+    health:
+      show-details: always # 显示详细的健康信息 (包含 DB, Redis 状态)
